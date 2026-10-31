@@ -248,13 +248,21 @@ button:hover { border-color: var(--ink); }
 .day.blank { visibility: hidden; }
 
 /* 経路外の交通費 */
-.extras { display: flex; flex-direction: column; gap: 10px; }
-.extra-row {
-  display: grid; grid-template-columns: minmax(0, 1.5fr) 150px minmax(0, 1fr) 110px 42px; gap: 8px; align-items: center;
-  padding-bottom: 10px; border-bottom: 1px dashed var(--line);
+.extras { display: flex; flex-direction: column; gap: 8px; }
+.extra-item {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px;
+  width: 100%; padding: 12px 14px; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
 }
-.extra-row:last-child { padding-bottom: 0; border-bottom: none; }
-.extra-row .del { height: 42px; padding: 0; color: var(--muted); }
+.extra-item:hover { border-color: var(--terra); }
+.extra-date { display: flex; flex-direction: column; align-items: center; min-width: 3.2em; font-family: var(--f-label); line-height: 1.2; }
+.extra-date b { font-size: 18px; font-weight: 500; }
+.extra-date small { font-size: 11px; color: var(--muted); }
+.extra-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.extra-main b { font-size: 14px; }
+.extra-main small { font-size: 12px; color: var(--muted); }
+.extra-amount { font-size: 15px; white-space: nowrap; }
+.extras-empty { padding: 16px; text-align: center; font-size: 13px; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius-sm); }
 
 /* データ管理 */
 .confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; font-size: 13px; background: var(--terra-soft); border-radius: var(--radius-sm); }
@@ -327,14 +335,77 @@ tfoot .amount { font-size: 16px; }
 #printBtn { display: none; }
 .can-print #printBtn { display: inline-block; }
 
+/* ---------- 経路の入力ガイド（モーダル） ---------- */
+.route { cursor: pointer; }
+.route:hover .station-name { color: var(--green); }
+.route-edit-btn { padding: 2px 10px; font-size: 12px; color: var(--terra); background: transparent; border-color: var(--blush); }
+body.modal-open { overflow: hidden; }
+.modal {
+  position: fixed; inset: 0; z-index: 50; display: grid; place-items: center;
+  background: rgba(20, 14, 12, .5);
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.modal-card {
+  display: flex; flex-direction: column; gap: 18px; width: min(480px, 100%); max-height: 100%; overflow: auto;
+  background: var(--surface); border-radius: var(--radius); padding: 26px 24px 22px;
+}
+.modal-progress { display: flex; gap: 6px; }
+.modal-progress i { flex: 1; height: 3px; background: var(--line); }
+.modal-progress i.done { background: var(--green); }
+.modal-step { font-family: var(--f-label); font-size: 11px; letter-spacing: .24em; color: var(--terra); }
+.modal-title { margin: 0; font-family: var(--f-display); font-weight: 800; font-size: 24px; letter-spacing: .06em; line-height: 1.35; }
+.modal-sub { margin: -8px 0 0; font-size: 13px; color: var(--muted); }
+.modal-fields { display: flex; flex-direction: column; gap: 12px; }
+.modal-fields input { font-size: 18px; padding: 12px 14px; }
+.input-yen { position: relative; }
+.input-yen input { padding-right: 40px; }
+.input-yen::after { content: "円"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.station-pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: end; }
+.swap-btn { height: 50px; padding: 0 12px; }
+.modal-error { margin: 0; min-height: 1.2em; font-size: 12px; color: var(--sun); }
+.modal-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+.modal-actions .btn-primary { flex: 1; padding: 12px 16px; font-size: 15px; }
+.modal-actions .link-btn { background: transparent; border: none; color: var(--muted); padding: 12px 8px; }
+@media (max-width: 600px) {
+  .modal { place-items: end center; padding: 0; }
+  .modal-card { width: 100%; border-radius: 12px 12px 0 0; padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px)); }
+  .station-pair { grid-template-columns: minmax(0, 1fr); }
+  .swap-btn { height: 40px; justify-self: center; }
+}
+
+/* 入力画面：片道／往復の切り替えと合計表示 */
+.segmented { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented label { padding: 10px; text-align: center; font-size: 14px; cursor: pointer; background: var(--surface); }
+.segmented label + input + label { border-left: 1px solid var(--line); }
+.segmented input:checked + label { background: var(--green); color: var(--on-accent); font-weight: 700; }
+.segmented input:focus-visible + label { outline: 2px solid var(--green); outline-offset: -2px; }
+.modal-total { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; background: var(--green-soft); border-radius: var(--radius-sm); }
+.modal-total span { font-size: 12px; color: var(--muted); }
+.modal-total .amount { font-size: 22px; color: var(--green); }
+.modal-actions .danger { margin-right: auto; color: var(--sun); background: transparent; border: none; padding: 12px 8px; }
+
+/* 使い方ガイド */
+.guide-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 13px;
+  color: var(--top-ink); background: transparent; border: 1px solid rgba(255,255,255,.35);
+}
+.guide-btn:hover { border-color: var(--top-ink); }
+.topbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.guide-list { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: guide; }
+.guide-list li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; counter-increment: guide; }
+.guide-list li::before {
+  content: counter(guide); display: grid; place-items: center; width: 32px; height: 32px;
+  font-family: var(--f-label); font-size: 15px; color: var(--on-accent); background: var(--green); border-radius: 50%;
+}
+.guide-list b { display: block; font-size: 15px; margin-bottom: 2px; }
+.guide-list p { margin: 0; font-size: 13px; color: var(--muted); }
+.guide-note { margin: 0; padding: 10px 12px; font-size: 12px; color: var(--muted); background: var(--surface-2); border-radius: var(--radius-sm); }
+
 /* ---------- 下部タブ（スマホ） ---------- */
 .tabbar { display: none; }
 
 /* ---------- レスポンシブ ---------- */
-@media (max-width: 1100px) and (min-width: 901px) {
-  .extra-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px; }
-  .extra-row .route-in, .extra-row .mode-in { grid-column: 1 / -1; }
-}
 @media (min-width: 901px) {
   .pane { display: flex; }
 }
@@ -361,10 +432,6 @@ tfoot .amount { font-size: 16px; }
 }
 @media (max-width: 780px) {
   .hero .inner { grid-template-columns: minmax(0, 1fr); }
-}
-@media (max-width: 640px) {
-  .extra-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px; }
-  .extra-row .route-in, .extra-row .mode-in { grid-column: 1 / -1; }
 }
 @media (max-width: 520px) {
   .day-kind .amount { display: none; }
@@ -405,23 +472,30 @@ tfoot .amount { font-size: 16px; }
       </span>
       <span>通勤費精算レポート</span>
     </div>
+    <div class="topbar-actions">
+    <button class="guide-btn" id="guideBtn">？ 使い方</button>
     <div class="month-switch">
       <button id="prevM" aria-label="前の月">‹</button>
       <label class="month-label"><span id="mText"></span><input type="month" id="month" aria-label="対象月を選ぶ"></label>
       <button id="nextM" aria-label="次の月">›</button>
+    </div>
     </div>
   </div>
 </header>
 
 <section class="hero gutter">
   <div class="inner">
-    <div class="route">
+    <div class="route" id="routeBoard" role="button" tabindex="0" aria-label="通勤経路を変更する">
       <div class="route-main">
         <div class="station"><span class="station-role">出発 — DEPARTURE</span><span class="station-name" id="bFrom">—</span></div>
         <div class="track" aria-hidden="true"></div>
         <div class="station to"><span class="station-role">到着 — ARRIVAL</span><span class="station-name" id="bTo">—</span></div>
       </div>
-      <div class="route-band"><span class="route-line" id="bLine">交通機関 未入力</span><span class="route-fare" id="bFare"></span></div>
+      <div class="route-band">
+        <span class="route-line" id="bLine">交通機関 未入力</span>
+        <span class="route-fare" id="bFare"></span>
+        <button class="route-edit-btn" id="editRouteBtn" tabindex="-1">経路を変更</button>
+      </div>
     </div>
     <div class="total-panel" aria-live="polite">
       <span class="panel-label">今月の精算額　MONTHLY TOTAL</span>
@@ -434,8 +508,8 @@ tfoot .amount { font-size: 16px; }
 <main class="gutter">
   <div class="inner stack">
     <div class="notice" id="sampleBar" hidden>
-      <span>表示中の内容は<strong>入力例</strong>です。ご自身の情報に書き換えるか、消してから始めてください。</span>
-      <button class="btn-sm" id="clearSample">入力例を消す</button>
+      <span>表示中の内容は<strong>入力例</strong>です。</span>
+      <button class="btn-sm btn-primary" id="clearSample">自分の経路で始める</button>
     </div>
 
     <div class="layout">
@@ -455,8 +529,8 @@ tfoot .amount { font-size: 16px; }
         </section>
 
         <section class="card pane" data-pane="record">
-          <h2 class="card-title"><span class="t">経路外の交通費</span><button class="btn-sm" id="addEx">＋ 行を追加</button></h2>
-          <p class="hint">客先訪問や出張など、通常の経路以外の移動を記録します。</p>
+          <h2 class="card-title"><span class="t">経路外の交通費</span><button class="btn-sm btn-primary" id="addEx">＋ 追加</button></h2>
+          <p class="hint">いつもの通勤経路以外で移動した分（客先訪問・出張・研修など）を、1回ずつ追加します。追加した項目をタップすると修正・削除できます。</p>
           <div class="extras" id="extras"></div>
         </section>
 
@@ -535,6 +609,10 @@ tfoot .amount { font-size: 16px; }
     </div>
   </div>
 </main>
+
+<div class="modal" id="routeModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+  <form class="modal-card" id="modalForm" novalidate></form>
+</div>
 
 <nav class="tabbar" role="tablist" aria-label="画面切り替え">
   <button role="tab" data-tab="record" aria-selected="true">
@@ -745,8 +823,7 @@ tfoot .amount { font-size: 16px; }
         [ym]: {
           days,
           extras: [
-            { date: tripDate, route: '東京 → 横浜（客先訪問）', mode: 'JR東海道線', amount: '490' },
-            { date: tripDate, route: '横浜 → 東京', mode: 'JR東海道線', amount: '490' },
+            { date: tripDate, note: '客先訪問', from: '東京', to: '横浜', mode: 'JR東海道線', fare: '490', trip: 'rt' },
           ],
         },
       },
@@ -767,6 +844,30 @@ tfoot .amount { font-size: 16px; }
     if (!state.sample) return;
     state.sample = false;
     $('sampleBar').hidden = true;
+  }
+
+  /* ==========================================================
+     経路外の交通費（新形式：出発・到着・片道運賃・片道/往復。旧形式：区間・金額）
+     ========================================================== */
+  function describeExtra(r) {
+    const isNew = 'fare' in r || 'from' in r;
+    const amount = isNew ? toNumber(r.fare) * (r.trip === 'rt' ? 2 : 1) : toNumber(r.amount);
+    const route = isNew
+      ? `${r.from || '—'} ${r.trip === 'rt' ? '⇄' : '→'} ${r.to || '—'}`
+      : (r.route || '—');
+    if (!r.date && route === '— → —' && !amount) return null;
+    const date = r.date ? new Date(r.date + 'T00:00') : null;
+    const validDate = date && !Number.isNaN(date.getTime());
+    const details = [r.note, r.mode, isNew ? (r.trip === 'rt' ? '往復' : '片道') : ''].filter(Boolean);
+    return {
+      date: r.date || '',
+      dow: validDate ? DOW[date.getDay()] : '',
+      day: validDate ? date.getDate() : '',
+      route,
+      details,
+      routeText: route + (details.length ? `（${details.join('・')}）` : ''),
+      amount,
+    };
   }
 
   /* ==========================================================
@@ -791,17 +892,10 @@ tfoot .amount { font-size: 16px; }
 
     let extraTotal = 0;
     monthData().extras.forEach((r) => {
-      if (!r.date && !r.route && !r.amount) return;
-      const amount = toNumber(r.amount);
-      const date = r.date ? new Date(r.date + 'T00:00') : null;
-      extraTotal += amount;
-      rows.push({
-        date: r.date || '',
-        dow: date && !Number.isNaN(date.getTime()) ? DOW[date.getDay()] : '',
-        kind: 'ex',
-        route: (r.route || '—') + (r.mode ? `（${r.mode}）` : ''),
-        amount,
-      });
+      const ex = describeExtra(r);
+      if (!ex) return;
+      extraTotal += ex.amount;
+      rows.push({ date: ex.date, dow: ex.dow, kind: 'ex', route: ex.routeText, amount: ex.amount });
     });
 
     rows.sort((a, b) => a.date.localeCompare(b.date));
@@ -845,17 +939,18 @@ tfoot .amount { font-size: 16px; }
   }
 
   function renderExtras() {
-    const extras = monthData().extras;
+    const extras = monthData().extras
+      .map((r, i) => ({ i, ex: describeExtra(r) }))
+      .filter((x) => x.ex)
+      .sort((a, b) => a.ex.date.localeCompare(b.ex.date));
     $('extras').innerHTML = extras.length
-      ? extras.map((r, i) => `
-          <div class="extra-row" data-i="${i}">
-            <input class="route-in" data-k="route" value="${escapeHtml(r.route)}" placeholder="区間（例：東京 → 横浜）" aria-label="区間">
-            <input type="date" data-k="date" value="${escapeHtml(r.date)}" aria-label="日付">
-            <input class="mode-in" data-k="mode" value="${escapeHtml(r.mode)}" placeholder="交通機関" aria-label="交通機関">
-            <input data-k="amount" value="${escapeHtml(r.amount)}" placeholder="金額" inputmode="numeric" aria-label="金額">
-            <button class="del" data-del="${i}" aria-label="この行を削除">✕</button>
-          </div>`).join('')
-      : '<p class="hint">まだありません。</p>';
+      ? extras.map(({ i, ex }) => `
+          <button class="extra-item" data-i="${i}" aria-label="${escapeHtml(ex.routeText)} ${yen(ex.amount)} を編集">
+            <span class="extra-date"><b>${ex.day || '—'}</b><small>${ex.dow ? ex.dow + '曜' : ''}</small></span>
+            <span class="extra-main"><b>${escapeHtml(ex.route)}</b><small>${escapeHtml(ex.details.join('・')) || '詳細なし'}</small></span>
+            <span class="extra-amount amount">${yen(ex.amount)}</span>
+          </button>`).join('')
+      : '<div class="extras-empty">まだありません。「＋ 追加」から入力できます。</div>';
   }
 
   function renderReport() {
@@ -1039,6 +1134,307 @@ tfoot .amount { font-size: 16px; }
   }
 
   /* ==========================================================
+     経路の入力ガイド
+     初回は1問ずつ聞くウィザード、2回目以降は経路をまとめて編集
+     ========================================================== */
+  const FIELD = {
+    from: { label: '出発駅', placeholder: '例：中野', required: true },
+    to: { label: '到着駅', placeholder: '例：東京', required: true },
+    fare: { label: '片道運賃', placeholder: '例：230', yen: true, required: true },
+    line: { label: '利用する路線・交通機関（任意）', placeholder: '例：JR中央線' },
+    pass: { label: '1か月定期代（任意）', placeholder: '例：9220', yen: true },
+    name: { label: '氏名（任意）', autocomplete: 'name' },
+    dept: { label: '所属（任意）' },
+    empNo: { label: '社員番号（任意）' },
+  };
+
+  const WIZARD_STEPS = [
+    { title: '出発駅は？', sub: 'ふだん乗る駅を入れてください。', keys: ['from'] },
+    { title: '到着駅は？', sub: '勤務先の最寄り駅を入れてください。', keys: ['to'] },
+    { title: '片道の運賃は？', sub: 'ICカードの運賃で大丈夫です。路線名は空欄でもかまいません。', keys: ['fare', 'line'] },
+    { title: '1か月の定期代は？', sub: 'わかれば入れてください。定期券と実費精算のどちらが安いかを比べます。', keys: ['pass'] },
+    { title: '精算書に載せる名前', sub: '空欄のままでも使えます。あとで「設定」から変更できます。', keys: ['name', 'dept', 'empNo'] },
+  ];
+
+  const modal = { mode: 'wizard', step: 0, draft: {} };
+
+  function fieldHtml(key) {
+    const f = FIELD[key];
+    const input = `<input id="m_${key}" data-key="${key}" value="${escapeHtml(modal.draft[key])}"`
+      + ` placeholder="${f.placeholder || ''}"${f.yen ? ' inputmode="numeric"' : ''}`
+      + `${f.autocomplete ? ` autocomplete="${f.autocomplete}"` : ''} enterkeyhint="next">`;
+    return `<label class="field">${f.label}${f.yen ? `<span class="input-yen">${input}</span>` : input}</label>`;
+  }
+
+  /* 経路外の交通費の入力画面 */
+  function defaultExtraDate() {
+    return state.month === currentMonth() ? todayKey() : `${state.month}-01`;
+  }
+
+  function openExtraModal(index) {
+    const src = index === null ? {} : monthData().extras[index];
+    const isNew = 'fare' in src || 'from' in src;
+    modal.extraIndex = index;
+    modal.extra = {
+      date: src.date || defaultExtraDate(),
+      note: src.note || '',
+      from: src.from || (isNew ? '' : src.route || ''),
+      to: src.to || '',
+      mode: src.mode || '',
+      fare: isNew ? (src.fare || '') : (src.amount || ''),
+      trip: src.trip || 'ow',
+    };
+    modal.mode = 'extra';
+    $('routeModal').hidden = false;
+    document.body.classList.add('modal-open');
+    renderModal();
+  }
+
+  function extraInput(id, label, value, attrs = '') {
+    return `<label class="field">${label}<input id="${id}" value="${escapeHtml(value)}" ${attrs}></label>`;
+  }
+
+  function renderExtraModal(form) {
+    const x = modal.extra;
+    form.innerHTML = `
+      <span class="modal-step">EXTRA TRIP</span>
+      <h2 class="modal-title" id="modalTitle">${modal.extraIndex === null ? '経路外の交通費を追加' : '経路外の交通費を修正'}</h2>
+      <p class="modal-sub">いつもの経路以外で移動した1回分を入れてください。</p>
+      <div class="modal-fields">
+        ${extraInput('exDate', '日付', x.date, 'type="date"')}
+        ${extraInput('exNote', '用件（任意）', x.note, 'placeholder="例：客先訪問・出張・研修"')}
+        <div class="station-pair">
+          ${extraInput('exFrom', '乗った駅', x.from, 'placeholder="例：東京"')}
+          <button type="button" class="swap-btn" id="swapExtra" aria-label="乗った駅と降りた駅を入れ替える">⇄</button>
+          ${extraInput('exTo', '降りた駅', x.to, 'placeholder="例：横浜"')}
+        </div>
+        ${extraInput('exMode', '交通機関（任意）', x.mode, 'placeholder="例：JR東海道線・バス・タクシー"')}
+        <label class="field">片道の運賃<span class="input-yen"><input id="exFare" value="${escapeHtml(x.fare)}" inputmode="numeric" placeholder="例：490"></span></label>
+        <div class="field">行き帰り
+          <div class="segmented" role="radiogroup">
+            <input type="radio" name="exTrip" id="exTripOw" value="ow" ${x.trip !== 'rt' ? 'checked' : ''}><label for="exTripOw">片道</label>
+            <input type="radio" name="exTrip" id="exTripRt" value="rt" ${x.trip === 'rt' ? 'checked' : ''}><label for="exTripRt">往復（×2）</label>
+          </div>
+        </div>
+        <div class="modal-total"><span>この移動の交通費</span><span class="amount" id="exTotal"></span></div>
+      </div>
+      <p class="modal-error" id="modalError" role="alert"></p>
+      <div class="modal-actions">
+        ${modal.extraIndex === null ? '' : '<button type="button" class="danger" id="deleteExtra">削除</button>'}
+        <button type="button" class="link-btn" id="modalBack">やめる</button>
+        <button type="submit" class="btn-primary">${modal.extraIndex === null ? '追加する' : '保存する'}</button>
+      </div>`;
+    updateExtraTotal();
+    $('exFrom').focus();
+  }
+
+  function readExtraInputs() {
+    modal.extra = {
+      date: $('exDate').value,
+      note: $('exNote').value.trim(),
+      from: $('exFrom').value.trim(),
+      to: $('exTo').value.trim(),
+      mode: $('exMode').value.trim(),
+      fare: toNumber($('exFare').value) ? String(toNumber($('exFare').value)) : '',
+      trip: $('exTripRt').checked ? 'rt' : 'ow',
+    };
+  }
+
+  function updateExtraTotal() {
+    const fare = toNumber($('exFare').value);
+    $('exTotal').textContent = yen(fare * ($('exTripRt').checked ? 2 : 1));
+  }
+
+  function saveExtra() {
+    readExtraInputs();
+    const x = modal.extra;
+    const missing = !x.date ? ['exDate', '日付'] : !x.from ? ['exFrom', '乗った駅'] : !x.to ? ['exTo', '降りた駅'] : !x.fare ? ['exFare', '片道の運賃'] : null;
+    if (missing) {
+      $('modalError').textContent = `${missing[1]}を入れてください。`;
+      $(missing[0]).focus();
+      return;
+    }
+    // 別の月の日付なら、その月の記録として保存する
+    const targetMonth = x.date.slice(0, 7);
+    if (modal.extraIndex !== null) monthData().extras.splice(modal.extraIndex, 1);
+    if (!state.months[targetMonth]) state.months[targetMonth] = { days: {}, extras: [] };
+    state.months[targetMonth].extras.push(x);
+    leaveSample();
+    save();
+    renderExtras();
+    renderReport();
+    closeModal();
+  }
+
+  function deleteExtra() {
+    monthData().extras.splice(modal.extraIndex, 1);
+    commit(() => { renderExtras(); renderReport(); });
+    closeModal();
+  }
+
+  /* 使い方ガイド */
+  function renderGuideModal(form) {
+    form.innerHTML = `
+      <span class="modal-step">HOW TO USE</span>
+      <h2 class="modal-title" id="modalTitle">使い方</h2>
+      <ol class="guide-list">
+        <li><div><b>通勤経路を設定する</b><p>上の駅名ボードをタップして、出発駅・到着駅・片道運賃を入れます。</p></div></li>
+        <li><div><b>出勤した日をタップする</b><p>カレンダーの日付を押すと「往復」、もう一度で「片道」、もう一度で取り消しです。今日の分は「今日を記録」でも付けられます。まとめて付けるなら「平日をすべて往復」が便利です。</p></div></li>
+        <li><div><b>いつもと違う移動を追加する</b><p>客先訪問や出張などは「経路外の交通費」の「＋ 追加」から、日付・駅・運賃を入れます。</p></div></li>
+        <li><div><b>月末に精算書を出す</b><p>「精算書」で内容を確認し、「Excel用にコピー」や「申請メール文をコピー」で提出します。</p></div></li>
+      </ol>
+      <p class="guide-note">入力内容はこの端末に自動で保存されます。機種変更の前は「設定」のバックアップを使ってください。</p>
+      <div class="modal-actions">
+        <button type="submit" class="btn-primary">${routeIsEmpty() && !state.sample ? '経路を設定する' : 'わかった'}</button>
+      </div>`;
+    form.querySelector('button').focus();
+  }
+
+  function renderModal() {
+    const form = $('modalForm');
+    if (modal.mode === 'extra') { renderExtraModal(form); return; }
+    if (modal.mode === 'guide') { renderGuideModal(form); return; }
+    if (modal.mode === 'wizard') {
+      const step = WIZARD_STEPS[modal.step];
+      const isLast = modal.step === WIZARD_STEPS.length - 1;
+      form.innerHTML = `
+        <div class="modal-progress">${WIZARD_STEPS.map((_, i) => `<i class="${i <= modal.step ? 'done' : ''}"></i>`).join('')}</div>
+        <span class="modal-step">STEP ${modal.step + 1} / ${WIZARD_STEPS.length}</span>
+        <h2 class="modal-title" id="modalTitle">${step.title}</h2>
+        <p class="modal-sub">${step.sub}</p>
+        <div class="modal-fields">${step.keys.map(fieldHtml).join('')}</div>
+        <p class="modal-error" id="modalError" role="alert"></p>
+        <div class="modal-actions">
+          <button type="button" class="link-btn" id="modalBack">${modal.step === 0 ? 'あとで' : '戻る'}</button>
+          <button type="submit" class="btn-primary">${isLast ? 'はじめる' : '次へ'}</button>
+        </div>`;
+    } else {
+      form.innerHTML = `
+        <h2 class="modal-title" id="modalTitle">通勤経路</h2>
+        <div class="modal-fields">
+          <div class="station-pair">
+            ${fieldHtml('from')}
+            <button type="button" class="swap-btn" id="swapStations" aria-label="出発と到着を入れ替える">⇄</button>
+            ${fieldHtml('to')}
+          </div>
+          ${fieldHtml('fare')}
+          ${fieldHtml('line')}
+          ${fieldHtml('pass')}
+        </div>
+        <p class="modal-error" id="modalError" role="alert"></p>
+        <div class="modal-actions">
+          <button type="button" class="link-btn" id="modalBack">やめる</button>
+          <button type="submit" class="btn-primary">保存する</button>
+        </div>`;
+    }
+    const first = form.querySelector('input');
+    if (first) first.focus();
+  }
+
+  function readModalInputs() {
+    $('modalForm').querySelectorAll('input[data-key]').forEach((input) => {
+      const key = input.dataset.key;
+      modal.draft[key] = FIELD[key].yen ? (toNumber(input.value) ? String(toNumber(input.value)) : '') : input.value.trim();
+    });
+  }
+
+  function validateModal() {
+    const missing = [...$('modalForm').querySelectorAll('input[data-key]')]
+      .map((input) => input.dataset.key)
+      .filter((key) => FIELD[key].required && !modal.draft[key]);
+    if (!missing.length) return true;
+    $('modalError').textContent = `${FIELD[missing[0]].label}を入れてください。`;
+    $(`m_${missing[0]}`).focus();
+    return false;
+  }
+
+  function openModal(mode) {
+    modal.mode = mode;
+    modal.step = 0;
+    modal.draft = state.sample ? {} : { ...state.profile };
+    $('routeModal').hidden = false;
+    document.body.classList.add('modal-open');
+    renderModal();
+  }
+
+  function closeModal() {
+    if (modal.mode === 'guide' && !state.guideSeen) { state.guideSeen = true; save(); }
+    $('routeModal').hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+
+  function applyModal() {
+    if (state.sample) state = { ...emptyState(), guideSeen: state.guideSeen };
+    Object.assign(state.profile, modal.draft);
+    save();
+    renderAll();
+    closeModal();
+  }
+
+  $('modalForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (modal.mode === 'extra') { saveExtra(); return; }
+    if (modal.mode === 'guide') {
+      state.guideSeen = true;
+      save();
+      if (routeIsEmpty() && !state.sample) openModal('wizard'); else closeModal();
+      return;
+    }
+    readModalInputs();
+    if (!validateModal()) return;
+    if (modal.mode === 'wizard' && modal.step < WIZARD_STEPS.length - 1) {
+      modal.step++;
+      renderModal();
+      return;
+    }
+    const fromWizard = modal.mode === 'wizard';
+    applyModal();
+    if (fromWizard) {
+      setTab('record');
+      window.scrollTo({ top: 0 });
+    }
+  });
+
+  $('modalForm').addEventListener('input', (e) => {
+    if (modal.mode === 'extra' && (e.target.id === 'exFare' || e.target.name === 'exTrip')) updateExtraTotal();
+  });
+
+  $('modalForm').addEventListener('click', (e) => {
+    if (e.target.id === 'swapExtra') {
+      [$('exFrom').value, $('exTo').value] = [$('exTo').value, $('exFrom').value];
+    }
+    if (e.target.id === 'deleteExtra') deleteExtra();
+    if (e.target.id === 'swapStations') {
+      readModalInputs();
+      [modal.draft.from, modal.draft.to] = [modal.draft.to, modal.draft.from];
+      $('m_from').value = modal.draft.from || '';
+      $('m_to').value = modal.draft.to || '';
+    }
+    if (e.target.id === 'modalBack') {
+      if (modal.mode === 'guide') {
+        closeModal();
+      } else if (modal.mode === 'wizard' && modal.step > 0) {
+        readModalInputs();
+        modal.step--;
+        renderModal();
+      } else {
+        closeModal();
+      }
+    }
+  });
+
+  $('routeModal').addEventListener('click', (e) => { if (e.target.id === 'routeModal') closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('routeModal').hidden) closeModal(); });
+
+  const routeIsEmpty = () => !state.profile.from && !state.profile.to && !state.profile.fare;
+  const openRouteEditor = () => openModal(routeIsEmpty() || state.sample ? 'wizard' : 'edit');
+
+  $('routeBoard').addEventListener('click', openRouteEditor);
+  $('routeBoard').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRouteEditor(); }
+  });
+
+  /* ==========================================================
      イベント
      ========================================================== */
   document.querySelectorAll('.tabbar button').forEach((b) => {
@@ -1077,37 +1473,23 @@ tfoot .amount { font-size: 16px; }
 
   $('clearDays').addEventListener('click', () => { monthData().days = {}; commit(); });
 
-  $('extras').addEventListener('input', (e) => {
-    const row = e.target.closest('.extra-row');
-    const field = e.target.dataset.k;
-    if (!row || !field) return;
-    monthData().extras[row.dataset.i][field] = e.target.value;
-    commit(renderReport);
-  });
-
   $('extras').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-del]');
-    if (!btn) return;
-    monthData().extras.splice(Number(btn.dataset.del), 1);
-    commit(() => { renderExtras(); renderReport(); });
+    const item = e.target.closest('.extra-item');
+    if (item) openExtraModal(Number(item.dataset.i));
   });
 
-  $('addEx').addEventListener('click', () => {
-    monthData().extras.push({ date: `${state.month}-01`, route: '', mode: '', amount: '' });
-    commit(() => { renderExtras(); renderReport(); });
-    const rows = $('extras').querySelectorAll('.extra-row');
-    rows[rows.length - 1].querySelector('.route-in').focus();
-  });
+  $('addEx').addEventListener('click', () => openExtraModal(null));
+  $('guideBtn').addEventListener('click', () => openModal('guide'));
 
   $('month').addEventListener('change', (e) => { if (e.target.value) setMonth(e.target.value); });
   $('prevM').addEventListener('click', () => shiftMonth(-1));
   $('nextM').addEventListener('click', () => shiftMonth(1));
 
   $('clearSample').addEventListener('click', () => {
-    state = emptyState();
+    state = { ...emptyState(), guideSeen: state.guideSeen };
     save();
     renderAll();
-    setTab('settings');
+    openModal('wizard');
   });
 
   // 出力
@@ -1177,6 +1559,7 @@ tfoot .amount { font-size: 16px; }
   renderAll();
   renderHolidayStatus();
   save();
+  if (!state.sample && routeIsEmpty()) openModal('wizard');
 
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* 非対応 */ }
 
