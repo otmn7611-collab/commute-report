@@ -332,8 +332,10 @@ tfoot .amount { font-size: 16px; }
 
 .export { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 20px; background: var(--surface-2); border-top: 1px solid var(--line); }
 .export .btn-row button { flex: 1 1 150px; }
-#printBtn { display: none; }
-.can-print #printBtn { display: inline-block; }
+#sheetPrintable { display: flex; flex-direction: column; background: var(--surface); }
+.export-label { font-size: 11px; letter-spacing: .14em; color: var(--muted); }
+.can-download .download-off { display: none; }
+button:disabled { opacity: .6; cursor: progress; }
 
 /* ---------- 経路の入力ガイド（モーダル） ---------- */
 .route { cursor: pointer; }
@@ -577,6 +579,7 @@ body.modal-open { overflow: hidden; }
 
       <div class="col">
         <section class="sheet pane" data-pane="report" aria-label="精算書">
+          <div id="sheetPrintable">
           <div class="sheet-head">
             <div><h2 class="sheet-title">通勤費精算書</h2><div class="sheet-period" id="rPeriod"></div></div>
             <div class="stamps"><div><b>承認</b><i></i></div><div><b>確認</b><i></i></div><div><b>申請</b><i></i></div></div>
@@ -594,12 +597,19 @@ body.modal-open { overflow: hidden; }
               </table>
             </div>
           </div>
+          </div>
           <div class="export">
+            <span class="export-label">ファイルで保存</span>
+            <div class="btn-row download-row">
+              <button class="btn-primary" id="dlXlsx">Excel（.xlsx）</button>
+              <button id="dlPdf">PDF</button>
+              <button id="dlCsv">CSV</button>
+            </div>
+            <p class="hint download-off">このプレビュー画面ではファイルを保存できません。公開したサイト（GitHub Pages など）でお使いください。</p>
+            <span class="export-label">コピーして貼り付け</span>
             <div class="btn-row">
-              <button class="btn-primary" id="copyTsv">Excel用にコピー</button>
-              <button id="copyCsv">CSVでコピー</button>
+              <button id="copyTsv">表をコピー（Excelに貼り付け）</button>
               <button id="copyText">申請メール文をコピー</button>
-              <button id="printBtn">印刷・PDF保存</button>
             </div>
             <p class="toast" id="toast" role="status"></p>
             <textarea id="copyArea" class="output" readonly aria-label="コピー内容" hidden></textarea>
@@ -1096,6 +1106,212 @@ body.modal-open { overflow: hidden; }
     try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
   }
 
+  /* ==========================================================
+     ファイル出力（Excel / PDF / CSV）
+     ライブラリは使うときだけ読み込む
+     ========================================================== */
+  const LIBS = {
+    exceljs: 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
+    html2canvas: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+    jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  };
+  const scriptCache = {};
+
+  function loadScript(url) {
+    if (!scriptCache[url]) {
+      scriptCache[url] = new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = url;
+        el.onload = resolve;
+        el.onerror = () => { delete scriptCache[url]; reject(new Error('script load failed')); };
+        document.head.appendChild(el);
+      });
+    }
+    return scriptCache[url];
+  }
+
+  function exportFileName(ext) {
+    const [y, m] = parseMonth(state.month);
+    const name = (state.profile.name || '').replace(/[\\/:*?"<>|\s]/g, '');
+    return `通勤費精算書_${y}年${pad(m)}月${name ? '_' + name : ''}.${ext}`;
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  function showExportMessage(message, isError = false) {
+    const toast = $('toast');
+    toast.className = isError ? 'toast error' : 'toast';
+    toast.textContent = message;
+  }
+
+  async function runExport(button, busyLabel, task) {
+    if (!document.documentElement.classList.contains('can-download')) {
+      showExportMessage('このプレビュー画面ではファイルを保存できません。公開したサイトで押してください。', true);
+      return;
+    }
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = busyLabel;
+    try {
+      const filename = await task();
+      showExportMessage(`「${filename}」を保存しました。`);
+    } catch (e) {
+      showExportMessage('ファイルを作れませんでした。通信状態を確認して、もう一度お試しください。', true);
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+
+  async function downloadCsv() {
+    const filename = exportFileName('csv');
+    // 先頭のBOMで、Excelで開いても文字化けしない
+    downloadBlob(new Blob(['\uFEFF' + toCsv(reportTable())], { type: 'text/csv;charset=utf-8' }), filename);
+    return filename;
+  }
+
+  async function downloadXlsx() {
+    await loadScript(LIBS.exceljs);
+    const c = compute();
+    const p = state.profile;
+    const [y, m] = parseMonth(state.month);
+    const last = daysInMonth(state.month);
+
+    const wb = new window.ExcelJS.Workbook();
+    const ws = wb.addWorksheet(`${y}年${m}月`, {
+      pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+    ws.columns = [{ width: 13 }, { width: 6 }, { width: 9 }, { width: 44 }, { width: 14 }];
+
+    const FONT = { name: 'Meiryo', size: 10 };
+    const YEN = '"¥"#,##0';
+    const thin = { style: 'thin', color: { argb: 'FFC9BCB3' } };
+    const border = { top: thin, left: thin, bottom: thin, right: thin };
+    const green = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D6B52' } };
+    const pale = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F2EE' } };
+    const left = { horizontal: 'left', vertical: 'middle', wrapText: true };
+    const style = (cell, extra = {}) => {
+      cell.font = { ...FONT, ...(extra.font || {}) };
+      cell.alignment = left;
+      if (extra.fill) cell.fill = extra.fill;
+      if (extra.numFmt) cell.numFmt = extra.numFmt;
+      if (extra.border) cell.border = border;
+    };
+
+    // タイトル
+    ws.mergeCells('A1:E1');
+    ws.getCell('A1').value = '通勤費精算書';
+    style(ws.getCell('A1'), { font: { size: 16, bold: true } });
+    ws.getRow(1).height = 28;
+    ws.mergeCells('A2:E2');
+    ws.getCell('A2').value = `対象期間 ${y}/${pad(m)}/01 – ${y}/${pad(m)}/${last}`;
+    style(ws.getCell('A2'), { font: { color: { argb: 'FF7A6C64' } } });
+
+    // 申請者情報
+    let r = 4;
+    [
+      ['氏名', p.name || ''], ['所属', p.dept || ''], ['社員番号', p.empNo || ''],
+      ['通勤経路', `${p.from || ''} ⇄ ${p.to || ''}`], ['交通機関', p.line || ''], ['片道運賃', c.fare],
+    ].forEach(([label, value]) => {
+      ws.mergeCells(`B${r}:E${r}`);
+      ws.getCell(`A${r}`).value = label;
+      ws.getCell(`B${r}`).value = value;
+      style(ws.getCell(`A${r}`), { fill: pale, border: true, font: { bold: true } });
+      style(ws.getCell(`B${r}`), { border: true, numFmt: typeof value === 'number' ? YEN : undefined });
+      r++;
+    });
+
+    // 明細
+    r++;
+    const header = ws.getRow(r);
+    ['日付', '曜日', '区分', '区間・交通機関', '金額'].forEach((h, i) => {
+      header.getCell(i + 1).value = h;
+      style(header.getCell(i + 1), { fill: green, border: true, font: { bold: true, color: { argb: 'FFFFFFFF' } } });
+    });
+    r++;
+    c.rows.forEach((row) => {
+      const line = ws.getRow(r);
+      [row.date.replace(/-/g, '/'), row.dow, KIND_LABEL[row.kind], row.route, row.amount].forEach((v, i) => {
+        line.getCell(i + 1).value = v;
+        style(line.getCell(i + 1), { border: true, numFmt: i === 4 ? YEN : undefined });
+      });
+      r++;
+    });
+    ws.mergeCells(`A${r}:D${r}`);
+    ws.getCell(`A${r}`).value = '精算合計';
+    ws.getCell(`E${r}`).value = c.total;
+    style(ws.getCell(`A${r}`), { fill: pale, border: true, font: { bold: true } });
+    style(ws.getCell(`E${r}`), { fill: pale, border: true, numFmt: YEN, font: { bold: true } });
+
+    // 集計
+    r += 2;
+    [
+      ['出勤日数', `${c.roundTrips + c.oneWays}日`], ['往復回数', `${c.roundTrips}回`], ['片道回数', `${c.oneWays}回`],
+      ['通常経路 小計', c.commuteTotal], ['経路外 小計', c.extraTotal], ['精算合計', c.total],
+    ].forEach(([label, value], i, all) => {
+      const isTotal = i === all.length - 1;
+      ws.mergeCells(`B${r}:C${r}`);
+      ws.getCell(`A${r}`).value = label;
+      ws.getCell(`B${r}`).value = value;
+      style(ws.getCell(`A${r}`), { fill: pale, border: true, font: { bold: isTotal } });
+      style(ws.getCell(`B${r}`), { border: true, numFmt: typeof value === 'number' ? YEN : undefined, font: { bold: isTotal } });
+      r++;
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const filename = exportFileName('xlsx');
+    downloadBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename);
+    return filename;
+  }
+
+  async function downloadPdf() {
+    await Promise.all([loadScript(LIBS.html2canvas), loadScript(LIBS.jspdf)]);
+    // 画面の幅や色テーマに関係なく、A4に収まる幅・明るい配色で精算書を画像化する
+    const canvas = await window.html2canvas($('sheetPrintable'), {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      windowWidth: 1000,
+      onclone: (doc) => {
+        doc.documentElement.setAttribute('data-theme', 'light');
+        doc.body.setAttribute('data-tab', 'report');
+        const sheet = doc.getElementById('sheetPrintable');
+        sheet.style.width = '760px';
+        sheet.style.background = '#ffffff';
+      },
+    });
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const margin = 10;
+    const pageW = 210 - margin * 2;
+    const pageH = 297 - margin * 2;
+    const pxPerPage = Math.floor(canvas.width * (pageH / pageW));
+
+    // 縦に長いときはページを分けて貼る
+    for (let top = 0, page = 0; top < canvas.height; top += pxPerPage, page++) {
+      const sliceH = Math.min(pxPerPage, canvas.height - top);
+      const slice = document.createElement('canvas');
+      slice.width = canvas.width;
+      slice.height = sliceH;
+      slice.getContext('2d').drawImage(canvas, 0, top, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+      if (page > 0) pdf.addPage();
+      pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, pageW, sliceH * (pageW / canvas.width));
+    }
+
+    const filename = exportFileName('pdf');
+    downloadBlob(pdf.output('blob'), filename);
+    return filename;
+  }
+
   function showDataMessage(message, isError = false) {
     const toast = $('dataToast');
     toast.className = isError ? 'toast error' : 'toast';
@@ -1494,9 +1710,10 @@ body.modal-open { overflow: hidden; }
 
   // 出力
   $('copyTsv').addEventListener('click', () => copyText(toTsv(reportTable()), 'コピーしました。Excelのセルに貼り付けると表になります。', 'copyArea', 'toast'));
-  $('copyCsv').addEventListener('click', () => copyText(toCsv(reportTable()), 'CSV形式でコピーしました。メモ帳などに貼って .csv で保存できます。', 'copyArea', 'toast'));
+  $('dlXlsx').addEventListener('click', (e) => runExport(e.currentTarget, '作成中…', downloadXlsx));
+  $('dlPdf').addEventListener('click', (e) => runExport(e.currentTarget, '作成中…', downloadPdf));
+  $('dlCsv').addEventListener('click', (e) => runExport(e.currentTarget, '作成中…', downloadCsv));
   $('copyText').addEventListener('click', () => copyText(toMailText(), '申請メール文をコピーしました。', 'copyArea', 'toast'));
-  $('printBtn').addEventListener('click', () => { try { window.print(); } catch (e) { /* 印刷不可 */ } });
 
   // バックアップ・復元・全消去
   $('backupBtn').addEventListener('click', () => copyText(JSON.stringify(state), 'バックアップをコピーしました。メモアプリなどに貼って保管してください。', 'backupArea', 'dataToast'));
@@ -1542,10 +1759,10 @@ body.modal-open { overflow: hidden; }
   /* ==========================================================
      起動
      ========================================================== */
-  // 自分のサイトとして開いたときだけ印刷ボタンを出す
+  // 自分のサイトとして開いたときだけファイル保存ボタンを出す（埋め込み表示では保存できないため）
   let framed = true;
   try { framed = window.self !== window.top; } catch (e) { /* 判定不可 */ }
-  if (!framed) document.documentElement.classList.add('can-print');
+  if (!framed) document.documentElement.classList.add('can-download');
 
   // 日付が変わってから開いたら今月を表示
   if (state.lastOpen !== todayKey()) {
