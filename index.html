@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>通勤費精算レポート</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&family=JetBrains+Mono:wght@500;700;800&display=swap">
+<style>
+/* Layout: 緑の帯ヘッダー → 駅名標風ボード(出発⇄到着＋発車標LEDの精算額) / PC=左に記録・右に精算書 / スマホ=下部タブ */
+:root{
+  --bg:#f1f4f2; --surface:#ffffff; --surface2:#f4f7f5; --ink:#18211c; --muted:#5a685f; --line:#d6dfd9;
+  --green:#0a8a3f; --green-deep:#06652d; --green-soft:#e0f2e7; --on-green:#ffffff;
+  --orange:#e8731a; --orange-soft:#fdeee0; --led-bg:#121512; --led:#ff9d2e; --led-sub:#7ddc6a;
+  --sign:#ffffff; --sign-ink:#151a17; --sun:#cc3d33; --sat:#2563b8; --good:#0a8a3f; --good-soft:#e0f2e7;
+  --f-display:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+  --f-num:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d1310; --surface:#151d18; --surface2:#1a241e; --ink:#e5ede8; --muted:#94a69a; --line:#27352c;
+  --green:#2fb466; --green-deep:#0b5a2a; --green-soft:#16301f; --on-green:#ffffff;
+  --orange:#f39a4f; --orange-soft:#3a2615; --sign:#1c2620; --sign-ink:#eef4f0;
+  --sun:#f07a70; --sat:#7aa8f0; --good:#5fd08f; --good-soft:#16301f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d1310; --surface:#151d18; --surface2:#1a241e; --ink:#e5ede8; --muted:#94a69a; --line:#27352c;
+  --green:#2fb466; --green-deep:#0b5a2a; --green-soft:#16301f; --on-green:#ffffff;
+  --orange:#f39a4f; --orange-soft:#3a2615; --sign:#1c2620; --sign-ink:#eef4f0;
+  --sun:#f07a70; --sat:#7aa8f0; --good:#5fd08f; --good-soft:#16301f; color-scheme:dark}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.6;-webkit-tap-highlight-color:transparent;overflow-wrap:anywhere}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.inner{max-width:1200px;margin:0 auto}
+
+/* ---------- 緑帯 ---------- */
+.topbar{background:var(--green-deep);color:var(--on-green);padding-block:12px}
+.topbar .inner{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:900;font-size:17px;letter-spacing:.06em;line-height:1.3}
+.brand .mark{flex:none;width:32px;height:32px;border-radius:8px;background:var(--on-green);display:grid;place-items:center}
+.brand .mark svg{width:20px;height:20px}
+.monthsw{display:flex;align-items:center;background:rgba(255,255,255,.14);border-radius:999px;padding:3px}
+.monthsw button{width:36px;height:36px;border-radius:999px;border:none;background:transparent;color:var(--on-green);font-size:20px;line-height:1;cursor:pointer;padding:0}
+.monthsw button:hover{background:rgba(255,255,255,.16)}
+.monthsw .mlabel{position:relative;padding:0 10px;font-family:var(--f-num);font-weight:700;font-size:16px;white-space:nowrap}
+.monthsw input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;font-size:16px}
+
+/* ---------- 駅名標ボード ---------- */
+.hero{background:var(--green);padding-block:18px 22px}
+.hero .inner{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:stretch}
+@media (max-width:780px){.hero .inner{grid-template-columns:minmax(0,1fr)}}
+.signboard{background:var(--sign);color:var(--sign-ink);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 2px 0 rgba(0,0,0,.18);min-width:0}
+.sign-main{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px;padding:18px 18px 14px}
+.stn{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stn.to{text-align:right}
+.stn .role{font-size:11px;color:var(--muted);letter-spacing:.12em}
+.stn .nm{font-family:var(--f-display);font-weight:900;font-size:clamp(22px,4.6vw,36px);line-height:1.2;word-break:break-word}
+.arrow{color:var(--green);display:grid;place-items:center}
+.arrow svg{width:clamp(28px,6vw,44px);height:auto}
+.sign-band{background:var(--green-deep);color:var(--on-green);display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 14px;padding:8px 18px;font-size:13px}
+.sign-band .ln{font-weight:700;letter-spacing:.06em}
+.sign-band .fr{font-family:var(--f-num)}
+.sign-stripe{height:6px;background:var(--orange)}
+
+.ledpanel{background:var(--led-bg);border-radius:10px;padding:14px 18px;display:flex;flex-direction:column;justify-content:center;gap:8px;min-width:0;border:3px solid #2a2f2a}
+.ledpanel .lbl{font-size:11px;color:var(--led-sub);letter-spacing:.16em;font-weight:700}
+.led{font-family:var(--f-num);font-weight:800;color:var(--led);font-size:clamp(34px,7vw,54px);line-height:1.1;font-variant-numeric:tabular-nums;text-shadow:0 0 14px rgba(255,157,46,.4);word-break:break-all}
+.ledrow{display:flex;flex-wrap:wrap;gap:6px 16px;font-family:var(--f-num);font-size:13px;color:var(--led-sub)}
+.ledrow span b{color:#cfd8cf;font-family:var(--f-body);font-weight:400;margin-right:5px}
+
+/* ---------- 本体 ---------- */
+main{padding-block:22px 40px}
+.stack{display:flex;flex-direction:column;gap:18px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:22px;align-items:start}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+.notice{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:var(--orange-soft);border-radius:var(--r);padding:12px 14px;font-size:13px}
+.notice strong{color:var(--orange)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card h2{font-family:var(--f-display);font-weight:700;font-size:16px;margin:0;display:flex;align-items:center;justify-content:space-between;gap:8px 10px;flex-wrap:wrap;line-height:1.4}
+.card h2 .t{display:flex;align-items:center;gap:8px}
+.card h2 .t::before{content:"";flex:none;width:6px;height:18px;border-radius:2px;background:var(--green)}
+.hint{color:var(--muted);font-size:12px;margin:0}
+
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);min-width:0}
+input,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:100%;min-width:0}
+input.num{font-family:var(--f-num);text-align:right}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 14px;line-height:1.35;transition:background .15s,border-color .15s,transform .1s}
+button:hover{border-color:var(--green)}
+button:active{transform:scale(.97)}
+.btn-primary{background:var(--green);border-color:var(--green);color:var(--on-green);font-weight:700}
+.btn-sm{padding:6px 12px;font-size:12px;border-radius:999px}
+.btn-danger{color:var(--sun)}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px}
+
+.saved{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--good)}
+.saved::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--good)}
+
+/* カレンダー */
+.seg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.seg span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;border-radius:4px;border:1px solid var(--line);background:var(--surface2)}
+.sw.rt{background:var(--green);border-color:var(--green)} .sw.ow{background:var(--orange-soft);border-color:var(--orange)}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.dow{text-align:center;font-size:11px;color:var(--muted);font-weight:700}
+.dow.sun{color:var(--sun)} .dow.sat{color:var(--sat)}
+.day{min-height:60px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);padding:6px 5px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;gap:3px;text-align:left;color:var(--ink);min-width:0;overflow-wrap:normal}
+.day .d{font-family:var(--f-num);font-weight:700;font-size:13px;line-height:1.2;white-space:nowrap}
+.day .k{font-size:11px;font-weight:700;line-height:1.25;display:flex;flex-direction:column}
+.day .k i{font-style:normal;font-family:var(--f-num);font-weight:500;font-size:10px;opacity:.9;white-space:nowrap}
+.day.off{background:transparent}
+.day.off .d{color:var(--sun)}
+.day.sat .d{color:var(--sat)}
+.day.hol .d{color:var(--sun)}
+.day.hol .d::after{content:"祝";font-family:var(--f-body);font-size:9px;margin-left:2px}
+.day.today{box-shadow:inset 0 0 0 2px var(--orange)}
+.day.rt{background:var(--green);border-color:var(--green);color:var(--on-green)}
+.day.rt .d{color:var(--on-green)}
+.day.ow{background:var(--orange-soft);border-color:var(--orange)}
+.day.ow .k{color:var(--orange)}
+.day.blank{visibility:hidden}
+@media (max-width:520px){.day .k i{display:none}.day{min-height:52px}}
+
+/* 経路外 */
+.extras{display:flex;flex-direction:column;gap:10px}
+.ex{display:grid;grid-template-columns:minmax(0,1.5fr) 150px minmax(0,1fr) 110px 42px;gap:8px;align-items:center;padding-bottom:10px;border-bottom:1px dashed var(--line)}
+.ex:last-child{border-bottom:none;padding-bottom:0}
+.ex .del{padding:0;height:42px;color:var(--muted)}
+@media (max-width:1100px) and (min-width:901px){.ex{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 42px}.ex .route,.ex .mode{grid-column:1/-1}}
+@media (max-width:640px){.ex{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 42px}.ex .route,.ex .mode{grid-column:1/-1}}
+
+/* 精算書 */
+.sheet{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;min-width:0;flex-direction:column}
+.sheet-top{padding:18px 20px 16px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:14px;border-top:6px solid var(--green);border-bottom:1px solid var(--line)}
+.sheet-top h2{font-family:var(--f-display);font-weight:900;font-size:22px;margin:0;letter-spacing:.16em;line-height:1.3}
+.period{font-family:var(--f-num);font-size:12px;color:var(--muted)}
+.stamps{display:flex;border:1px solid var(--ink);border-radius:4px;overflow:hidden}
+.stamps div{width:52px;display:flex;flex-direction:column;font-size:10px;text-align:center}
+.stamps div+div{border-left:1px solid var(--ink)}
+.stamps b{font-weight:400;border-bottom:1px solid var(--ink);padding:1px 0}
+.stamps i{height:42px}
+.sheet-body{padding:18px 20px 20px;display:flex;flex-direction:column;gap:16px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px 16px;margin:0}
+.meta dt{font-size:11px;color:var(--muted)} .meta dd{margin:0;font-weight:700}
+
+.sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:0}
+.sum div{padding:10px 12px;background:var(--surface)}
+.sum dt{font-size:11px;color:var(--muted)} .sum dd{margin:0;font-family:var(--f-num);font-weight:700;font-size:15px;word-break:break-all}
+.total{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;background:var(--green-soft);border-radius:12px;padding:12px 16px}
+.total .lbl{font-family:var(--f-display);font-weight:700}
+.total .amt{font-family:var(--f-num);font-weight:800;font-size:26px;color:var(--green);word-break:break-all}
+.compare{border-radius:12px;padding:11px 14px;font-size:13px}
+.compare.pass{background:var(--good-soft);color:var(--good)}
+.compare.cash{background:var(--orange-soft);color:var(--orange)}
+.compare b{font-family:var(--f-num)}
+
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{font-size:11px;color:var(--muted);font-weight:400;background:var(--surface2);white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+td.r,th.r{text-align:right;font-family:var(--f-num);white-space:nowrap}
+td.date,td.dw,td.kd{white-space:nowrap}
+td.date{font-family:var(--f-num)}
+td.route{min-width:9em;overflow-wrap:anywhere}
+tfoot td{font-weight:700;border-top:2px solid var(--ink);border-bottom:none;background:var(--surface2)}
+tfoot td.r{font-size:16px}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.tag.rt{background:var(--green-soft);color:var(--green)} .tag.ow{background:var(--orange-soft);color:var(--orange)} .tag.ex{background:var(--surface2);color:var(--muted);border:1px solid var(--line)}
+.empty{color:var(--muted);text-align:center;padding:18px}
+
+.export{display:flex;flex-direction:column;gap:10px;padding:16px 20px 20px;border-top:1px solid var(--line);background:var(--surface2)}
+.export .btnrow button{flex:1 1 150px}
+textarea.out{height:120px;font-family:var(--f-num);font-size:12px;background:var(--surface)}
+.toast{font-size:12px;color:var(--good);min-height:1.2em;margin:0}
+.toast.err{color:var(--sun)}
+
+/* 祝日データ */
+.holrow{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;border-top:1px dashed var(--line);padding-top:12px}
+/* 確認ダイアログ（ページ内） */
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--orange-soft);border-radius:10px;padding:10px 12px;font-size:13px}
+
+/* ---------- スマホ：下部タブ ---------- */
+.tabbar{display:none}
+@media (max-width:900px){
+  .grid{grid-template-columns:minmax(0,1fr)}
+  .pane{display:none!important}
+  body[data-tab="record"] .pane[data-pane="record"],
+  body[data-tab="report"] .pane[data-pane="report"],
+  body[data-tab="settings"] .pane[data-pane="settings"]{display:flex!important}
+  main{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
+  .tabbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:var(--surface);border-top:3px solid var(--green);
+    padding:6px max(10px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(10px,env(safe-area-inset-left,0px))}
+  .tabbar button{border:none;background:transparent;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;line-height:1.3;color:var(--muted);padding:6px 2px;border-radius:12px;text-align:center}
+  .tabbar button svg{width:22px;height:22px;flex:none}
+  .tabbar button[aria-selected="true"]{color:var(--green);background:var(--green-soft);font-weight:700}
+}
+@media (min-width:901px){.pane{display:flex}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* 印刷（自分のサイトで公開した場合に使えます） */
+#printBtn{display:none}
+.can-print #printBtn{display:inline-block}
+@media print{
+  body{background:#fff;color:#000}
+  .topbar,.hero,.tabbar,.notice,.pane:not(.sheet),.export{display:none!important}
+  .grid{display:block}.sheet{display:flex!important;border:none}
+  main{padding:0}
+}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+
+<header class="topbar gut">
+  <div class="inner">
+    <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#06652d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14M9 17l-2 4M15 17l2 4"/><circle cx="9" cy="14" r=".7" fill="#06652d"/><circle cx="15" cy="14" r=".7" fill="#06652d"/></svg></span><span>通勤費精算レポート</span></div>
+    <div class="monthsw">
+      <button id="prevM" aria-label="前の月">‹</button>
+      <label class="mlabel"><span id="mText"></span><input type="month" id="month" aria-label="対象月を選ぶ"></label>
+      <button id="nextM" aria-label="次の月">›</button>
+    </div>
+  </div>
+</header>
+
+<section class="hero gut">
+  <div class="inner">
+    <div class="signboard">
+      <div class="sign-main">
+        <div class="stn"><span class="role">自宅最寄</span><span class="nm" id="bFrom">—</span></div>
+        <div class="arrow" aria-hidden="true"><svg viewBox="0 0 48 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h38l-6-5M44 16H6l6 5"/></svg></div>
+        <div class="stn to"><span class="role">勤務地最寄</span><span class="nm" id="bTo">—</span></div>
+      </div>
+      <div class="sign-band"><span class="ln" id="bLine">交通機関 未入力</span><span class="fr" id="bFare"></span></div>
+      <div class="sign-stripe"></div>
+    </div>
+    <div class="ledpanel" aria-live="polite">
+      <span class="lbl">今月の精算額</span>
+      <div class="led" id="bTotal">¥0</div>
+      <div class="ledrow" id="bRow"></div>
+    </div>
+  </div>
+</section>
+
+<main class="gut">
+  <div class="inner stack">
+    <div class="notice" id="sampleBar" hidden>
+      <span>表示中の内容は<strong>入力例</strong>です。ご自身の情報に書き換えるか、消してから始めてください。</span>
+      <button class="btn-sm" id="clearSample">入力例を消す</button>
+    </div>
+
+    <div class="grid">
+      <div class="col">
+        <section class="card pane" data-pane="record">
+          <h2><span class="t">出勤日</span><span class="btnrow"><button class="btn-sm btn-primary" id="todayBtn">今日を記録</button><button class="btn-sm" id="fillWeekdays">平日をすべて往復</button><button class="btn-sm" id="clearDays">この月をクリア</button></span></h2>
+          <div class="seg"><span><i class="sw"></i>なし</span><span><i class="sw rt"></i>往復</span><span><i class="sw ow"></i>片道</span></div>
+          <div class="cal" id="cal"></div>
+          <p class="hint">日付をタップするたびに「なし → 往復 → 片道」の順に切り替わります。</p>
+        </section>
+
+        <section class="card pane" data-pane="record">
+          <h2><span class="t">経路外の交通費</span><button class="btn-sm" id="addEx">＋ 行を追加</button></h2>
+          <p class="hint">客先訪問や出張など、通常の経路以外の移動を記録します。</p>
+          <div class="extras" id="extras"></div>
+        </section>
+
+        <section class="card pane" data-pane="settings">
+          <h2><span class="t">申請者と通勤経路</span><span class="saved" id="savedMark">この端末に保存済み</span></h2>
+          <div class="fields">
+            <label class="f">氏名<input id="name" autocomplete="name"></label>
+            <label class="f">所属<input id="dept"></label>
+            <label class="f">社員番号<input id="empNo"></label>
+          </div>
+          <div class="fields">
+            <label class="f">出発（自宅最寄）<input id="from"></label>
+            <label class="f">到着（勤務地最寄）<input id="to"></label>
+            <label class="f">利用交通機関<input id="line" placeholder="例：JR中央線・地下鉄・バス"></label>
+          </div>
+          <div class="fields">
+            <label class="f">片道運賃（円）<input id="fare" class="num" inputmode="numeric"></label>
+            <label class="f">1か月定期代（円・任意）<input id="pass" class="num" inputmode="numeric"></label>
+          </div>
+          <p class="hint">定期代を入れると、実費精算と定期券のどちらが安いかを精算書に表示します。</p>
+        </section>
+
+        <section class="card pane" data-pane="settings">
+          <h2><span class="t">データの保存とバックアップ</span></h2>
+          <p class="hint">入力内容は自動でこの端末のブラウザに保存され、ページを閉じても次に開いたときに残っています。ブラウザの閲覧データ（Cookieとサイトデータ）を削除すると消えるため、機種変更の前などはバックアップを取ってください。</p>
+          <div class="btnrow">
+            <button id="backupBtn">バックアップをコピー</button>
+            <button id="restoreOpen">バックアップから復元</button>
+            <button class="btn-danger" id="wipeOpen">すべてのデータを消す</button>
+          </div>
+          <div id="restoreBox" class="stack" hidden>
+            <label class="f">コピーしておいたバックアップの文字列を貼り付けてください<textarea id="restoreText" class="out" rows="4"></textarea></label>
+            <div class="btnrow"><button class="btn-primary" id="restoreDo">復元する</button><button id="restoreCancel">やめる</button></div>
+          </div>
+          <div id="wipeBox" class="confirm" hidden>すべての月の記録と設定を消します。元に戻せません。<button class="btn-danger" id="wipeDo">消す</button><button id="wipeCancel">やめる</button></div>
+          <p class="toast" id="dataToast" role="status"></p>
+          <div class="holrow"><span class="hint" id="holStatus"></span><button class="btn-sm" id="holRefresh">祝日データを更新</button></div>
+          <textarea id="backupArea" class="out" readonly aria-label="バックアップ内容" hidden></textarea>
+        </section>
+      </div>
+
+      <div class="col">
+        <section class="sheet pane" data-pane="report" aria-label="精算書">
+          <div class="sheet-top">
+            <div><h2>通勤費精算書</h2><div class="period" id="rPeriod"></div></div>
+            <div class="stamps"><div><b>承認</b><i></i></div><div><b>確認</b><i></i></div><div><b>申請</b><i></i></div></div>
+          </div>
+          <div class="sheet-body">
+            <dl class="meta" id="rMeta"></dl>
+            <div class="total"><span class="lbl">精算合計</span><span class="amt" id="rTotal">¥0</span></div>
+            <dl class="sum" id="rSum"></dl>
+            <div id="rCompare"></div>
+            <div class="tbl"><table>
+              <thead><tr><th>日付</th><th>曜</th><th>区分</th><th>区間・交通機関</th><th class="r">金額</th></tr></thead>
+              <tbody id="rBody"></tbody>
+              <tfoot><tr><td colspan="4">精算合計</td><td class="r" id="rFoot">¥0</td></tr></tfoot>
+            </table></div>
+          </div>
+          <div class="export">
+            <div class="btnrow">
+              <button class="btn-primary" id="copyTsv">Excel用にコピー</button>
+              <button id="copyCsv">CSVでコピー</button>
+              <button id="copyText">申請メール文をコピー</button>
+              <button id="printBtn">印刷・PDF保存</button>
+            </div>
+            <p class="toast" id="toast" role="status"></p>
+            <textarea id="copyArea" class="out" readonly aria-label="コピー内容" hidden></textarea>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</main>
+
+<nav class="tabbar" role="tablist" aria-label="画面切り替え">
+  <button role="tab" data-tab="record" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4M8 15h3"/></svg><span>記録</span></button>
+  <button role="tab" data-tab="report" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h7"/></svg><span>精算書</span></button>
+  <button role="tab" data-tab="settings" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 12h7"/></svg><span>設定</span></button>
+</nav>
+
+<script>
+(function(){
+const KEY='commute-report-v1', BKEY='commute-report-backup';
+/* ---- 祝日：法律のルールから自動計算＋Web（holidays-jp）で上書き ---- */
+const HOLIDAY_API='https://holidays-jp.github.io/api/v1/date.json';
+const HCACHE='commute-holidays';
+const _hc={};
+function calcHolidays(y){
+  const p2=n=>String(n).padStart(2,'0'),k=(m,d)=>`${y}-${p2(m)}-${p2(d)}`,h=new Map();
+  const nthMon=(m,n)=>{const f=new Date(y,m-1,1).getDay();return 1+((8-f)%7)+(n-1)*7};
+  const b=y-1980,q=Math.floor(b/4);
+  const shun=Math.floor(20.8431+0.242194*b)-q, shu=Math.floor(23.2488+0.242194*b)-q;
+  [[1,1,'元日'],[1,nthMon(1,2),'成人の日'],[2,11,'建国記念の日'],[2,23,'天皇誕生日'],[3,shun,'春分の日'],[4,29,'昭和の日'],
+   [5,3,'憲法記念日'],[5,4,'みどりの日'],[5,5,'こどもの日'],[7,nthMon(7,3),'海の日'],[8,11,'山の日'],[9,nthMon(9,3),'敬老の日'],
+   [9,shu,'秋分の日'],[10,nthMon(10,2),'スポーツの日'],[11,3,'文化の日'],[11,23,'勤労感謝の日']].forEach(([m,d,n])=>h.set(k(m,d),n));
+  const base=[...h.keys()].sort();
+  /* 振替休日：日曜の祝日の後、最初の平日 */
+  base.forEach(s=>{const d=new Date(s+'T00:00');if(d.getDay()===0){const t=new Date(d);do{t.setDate(t.getDate()+1)}while(h.has(`${y}-${p2(t.getMonth()+1)}-${p2(t.getDate())}`));h.set(`${y}-${p2(t.getMonth()+1)}-${p2(t.getDate())}`,'振替休日')}});
+  /* 国民の休日：祝日に挟まれた平日 */
+  for(let m=1;m<=12;m++)for(let d=2;d<=31;d++){const t=new Date(y,m-1,d);if(t.getMonth()!==m-1)break;const s=k(m,d);if(h.has(s)||t.getDay()===0)continue;
+    const a=new Date(y,m-1,d-1),c=new Date(y,m-1,d+1),ka=`${a.getFullYear()}-${p2(a.getMonth()+1)}-${p2(a.getDate())}`,kc=`${c.getFullYear()}-${p2(c.getMonth()+1)}-${p2(c.getDate())}`;
+    if(h.has(ka)&&h.has(kc)&&h.get(ka)!=='振替休日')h.set(s,'国民の休日')}
+  return h;
+}
+let webHol=null;
+function holName(key){
+  const y=key.slice(0,4);
+  if(webHol&&webHol.years.includes(y))return webHol.data[key]||'';
+  if(!_hc[y])_hc[y]=calcHolidays(+y);
+  return _hc[y].get(key)||'';
+}
+
+function loadHolCache(){try{const o=JSON.parse(localStorage.getItem(HCACHE));if(o&&o.data&&o.at){webHol={data:o.data,at:o.at,years:[...new Set(Object.keys(o.data).map(k=>k.slice(0,4)))]}}}catch(e){}}
+loadHolCache();
+function fetchHolidays(force){
+  if(!force&&webHol&&Date.now()-webHol.at<7*864e5)return Promise.resolve('fresh');
+  if(typeof fetch!=='function')return Promise.resolve('fail');
+  return fetch(HOLIDAY_API,{cache:'no-store'}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(data=>{
+    if(!data||typeof data!=='object'||!Object.keys(data).length)throw 0;
+    const o={data,at:Date.now()};try{localStorage.setItem(HCACHE,JSON.stringify(o))}catch(e){}
+    loadHolCache();if(!webHol)webHol={data,at:o.at,years:[...new Set(Object.keys(data).map(k=>k.slice(0,4)))]};return 'ok'}).catch(()=>'fail');
+}
+const DOW=['日','月','火','水','木','金','土'];
+const $=id=>document.getElementById(id);
+const yen=n=>'¥'+(n||0).toLocaleString('ja-JP');
+const pad=n=>String(n).padStart(2,'0');
+const num=v=>{const n=parseInt(String(v??'').replace(/[^\d]/g,''),10);return isNaN(n)?0:n};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function thisMonth(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)}
+function todayKey(){const d=new Date();return thisMonth()+'-'+pad(d.getDate())}
+function daysIn(ym){const[y,m]=ym.split('-').map(Number);return new Date(y,m,0).getDate()}
+function wday(ym,d){const[y,m]=ym.split('-').map(Number);return new Date(y,m-1,d).getDay()}
+function isOff(ym,d){const w=wday(ym,d);return w===0||w===6||!!holName(ym+'-'+pad(d))}
+
+function sampleState(){
+  const ym=thisMonth(),days={};
+  for(let d=1;d<=daysIn(ym);d++){if(!isOff(ym,d))days[d]='rt'}
+  const wk=Object.keys(days);if(wk[3])days[wk[3]]='ow';if(wk[8])delete days[wk[8]];
+  const exd=ym+'-'+pad(wk[5]||10);
+  return{sample:true,month:ym,profile:{name:'山田 太郎',dept:'営業部 第一課',empNo:'A10234',from:'中野',to:'東京',line:'JR中央線',fare:'230',pass:'9220'},
+    months:{[ym]:{days,extras:[{date:exd,route:'東京 → 横浜（客先訪問）',mode:'JR東海道線',amount:'490'},{date:exd,route:'横浜 → 東京',mode:'JR東海道線',amount:'490'}]}}};
+}
+function valid(o){return o&&typeof o==='object'&&o.profile&&o.months&&typeof o.month==='string'}
+
+/* ---- 保存：localStorage＋予備コピー＋IndexedDB の三重化 ---- */
+let S=null;
+function readLS(k){try{const o=JSON.parse(localStorage.getItem(k));return valid(o)?o:null}catch(e){return null}}
+S=readLS(KEY)||readLS(BKEY);
+const hadLS=!!S;
+const IDB={db:null,
+  open(){return new Promise(r=>{try{const q=indexedDB.open('commute-report',1);q.onupgradeneeded=()=>q.result.createObjectStore('kv');q.onsuccess=()=>{IDB.db=q.result;r(q.result)};q.onerror=()=>r(null)}catch(e){r(null)}})},
+  get(){return new Promise(r=>{try{const t=IDB.db.transaction('kv').objectStore('kv').get('state');t.onsuccess=()=>r(valid(t.result)?t.result:null);t.onerror=()=>r(null)}catch(e){r(null)}})},
+  put(v){try{IDB.db&&IDB.db.transaction('kv','readwrite').objectStore('kv').put(JSON.parse(JSON.stringify(v)),'state')}catch(e){}},
+  clear(){try{IDB.db&&IDB.db.transaction('kv','readwrite').objectStore('kv').delete('state')}catch(e){}}
+};
+let saveOk=true;
+function save(){
+  const s=JSON.stringify(S);saveOk=true;
+  try{localStorage.setItem(KEY,s);localStorage.setItem(BKEY,s)}catch(e){saveOk=false}
+  IDB.put(S);
+  const m=$('savedMark');m.textContent=saveOk?'この端末に保存済み':'保存できない設定です（プライベートモード等）';m.style.color=saveOk?'':'var(--sun)';
+}
+try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+
+if(!S)S=sampleState();
+function M(){if(!S.months[S.month])S.months[S.month]={days:{},extras:[]};return S.months[S.month]}
+function unsample(){if(S.sample){S.sample=false;$('sampleBar').hidden=true}}
+function refresh(){renderCal();renderReport()}
+function renderAll(){$('sampleBar').hidden=!S.sample;loadProfile();$('month').value=S.month;renderCal();renderExtras();renderReport()}
+
+/* タブ */
+function setTab(t){document.body.dataset.tab=t;document.querySelectorAll('.tabbar button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));try{sessionStorage.setItem('commute-tab',t)}catch(e){}}
+document.querySelectorAll('.tabbar button').forEach(b=>b.onclick=()=>{setTab(b.dataset.tab);window.scrollTo({top:0})});
+
+/* 設定 */
+const PF=['name','dept','empNo','from','to','line','fare','pass'];
+function loadProfile(){PF.forEach(k=>{$(k).value=S.profile[k]||''})}
+PF.forEach(k=>$(k).addEventListener('input',()=>{S.profile[k]=$(k).value;unsample();save();refresh()}));
+
+/* カレンダー */
+function renderCal(){
+  const ym=S.month,first=wday(ym,1),n=daysIn(ym),days=M().days,fare=num(S.profile.fare),tk=todayKey(),m=+ym.split('-')[1];
+  let h=DOW.map((w,i)=>`<div class="dow ${i===0?'sun':i===6?'sat':''}">${w}</div>`).join('');
+  for(let i=0;i<first;i++)h+='<div class="day blank"></div>';
+  for(let d=1;d<=n;d++){
+    const st=days[d]||'',w=wday(ym,d),key=ym+'-'+pad(d),hn=holName(key),hol=!!hn;
+    const k=st==='rt'?`<span>往復</span><i>${yen(fare*2)}</i>`:st==='ow'?`<span>片道</span><i>${yen(fare)}</i>`:'';
+    const cls=['day',st,(w===0||w===6||hol)?'off':'',(w===6&&!hol)?'sat':'',hol?'hol':'',key===tk?'today':''].join(' ');
+    h+=`<button class="${cls}" data-d="${d}" title="${hn}" aria-label="${m}月${d}日${hn?'（'+hn+'）':''} ${st==='rt'?'往復':st==='ow'?'片道':'なし'}"><span class="d">${d}</span><span class="k">${k}</span></button>`;
+  }
+  $('cal').innerHTML=h;
+}
+$('cal').addEventListener('click',e=>{
+  const b=e.target.closest('.day[data-d]');if(!b)return;
+  const d=b.dataset.d,days=M().days,cur=days[d]||'',nx=cur===''?'rt':cur==='rt'?'ow':'';
+  if(nx)days[d]=nx;else delete days[d];
+  unsample();save();refresh();
+  const nb=$('cal').querySelector(`[data-d="${d}"]`);if(nb)nb.focus();
+});
+$('todayBtn').onclick=()=>{const tm=thisMonth();if(S.month!==tm){S.month=tm;$('month').value=tm;renderExtras()}
+  const d=String(new Date().getDate()),days=M().days,cur=days[d]||'',nx=cur===''?'rt':cur==='rt'?'ow':'';
+  if(nx)days[d]=nx;else delete days[d];unsample();save();refresh()};
+$('fillWeekdays').onclick=()=>{const days=M().days;for(let d=1;d<=daysIn(S.month);d++){if(!isOff(S.month,d))days[d]='rt'}unsample();save();refresh()};
+$('clearDays').onclick=()=>{M().days={};unsample();save();refresh()};
+
+/* 経路外 */
+function renderExtras(){
+  const ex=M().extras;
+  $('extras').innerHTML=ex.length?ex.map((r,i)=>`<div class="ex" data-i="${i}">
+    <input class="route" data-k="route" value="${esc(r.route)}" placeholder="区間（例：東京 → 横浜）" aria-label="区間">
+    <input type="date" data-k="date" value="${esc(r.date)}" aria-label="日付">
+    <input class="mode" data-k="mode" value="${esc(r.mode)}" placeholder="交通機関" aria-label="交通機関">
+    <input class="num" data-k="amount" value="${esc(r.amount)}" placeholder="金額" inputmode="numeric" aria-label="金額">
+    <button class="del" data-del="${i}" aria-label="この行を削除">✕</button></div>`).join(''):'<p class="hint">まだありません。</p>';
+}
+$('extras').addEventListener('input',e=>{const row=e.target.closest('.ex');if(!row||!e.target.dataset.k)return;M().extras[row.dataset.i][e.target.dataset.k]=e.target.value;unsample();save();renderReport()});
+$('extras').addEventListener('click',e=>{const b=e.target.closest('[data-del]');if(!b)return;M().extras.splice(+b.dataset.del,1);unsample();save();renderExtras();renderReport()});
+$('addEx').onclick=()=>{M().extras.push({date:S.month+'-01',route:'',mode:'',amount:''});unsample();save();renderExtras();renderReport();const rows=$('extras').querySelectorAll('.ex');rows[rows.length-1].querySelector('.route').focus()};
+
+/* 集計 */
+function compute(){
+  const ym=S.month,p=S.profile,fare=num(p.fare),days=M().days,rows=[];
+  let rt=0,ow=0;
+  for(let d=1;d<=daysIn(ym);d++){const st=days[d];if(!st)continue;
+    st==='rt'?rt++:ow++;
+    rows.push({date:ym+'-'+pad(d),dow:DOW[wday(ym,d)],kind:st,route:`${p.from||'—'} ⇄ ${p.to||'—'}${p.line?'（'+p.line+'）':''}`,amount:st==='rt'?fare*2:fare});}
+  let exSum=0;
+  M().extras.forEach(r=>{if(!r.date&&!r.route&&!r.amount)return;const a=num(r.amount);exSum+=a;const dt=r.date?new Date(r.date+'T00:00'):null;
+    rows.push({date:r.date||'',dow:dt&&!isNaN(dt)?DOW[dt.getDay()]:'',kind:'ex',route:(r.route||'—')+(r.mode?'（'+r.mode+'）':''),amount:a})});
+  rows.sort((a,b)=>a.date.localeCompare(b.date));
+  const commute=fare*(rt*2+ow);
+  return{rows,rt,ow,commute,exSum,total:commute+exSum,fare,pass:num(p.pass)};
+}
+const KIND={rt:'往復',ow:'片道',ex:'経路外'};
+function renderReport(){
+  const c=compute(),p=S.profile,[y,m]=S.month.split('-').map(Number);
+  $('mText').textContent=`${y}年${m}月`;
+  $('bFrom').textContent=p.from||'—';$('bTo').textContent=p.to||'—';
+  $('bLine').textContent=p.line||'交通機関 未入力';$('bFare').textContent=p.fare?`片道 ${yen(c.fare)}`:'';
+  $('bTotal').textContent=yen(c.total);
+  $('bRow').innerHTML=`<span><b>出勤</b>${c.rt+c.ow}日</span><span><b>往復</b>${c.rt}回</span><span><b>片道</b>${c.ow}回</span>${c.exSum?`<span><b>経路外</b>${yen(c.exSum)}</span>`:''}`;
+  $('rPeriod').textContent=`対象期間 ${y}/${pad(m)}/01 – ${y}/${pad(m)}/${daysIn(S.month)}`;
+  $('rMeta').innerHTML=[['氏名',p.name],['所属',p.dept],['社員番号',p.empNo],['通勤経路',(p.from||p.to)?`${p.from||'—'} ⇄ ${p.to||'—'}`:''],['交通機関',p.line],['片道運賃',p.fare?yen(c.fare):'']]
+    .map(([k,v])=>`<div><dt>${k}</dt><dd>${esc(v)||'—'}</dd></div>`).join('');
+  $('rTotal').textContent=yen(c.total);$('rFoot').textContent=yen(c.total);
+  $('rSum').innerHTML=[['出勤日数',(c.rt+c.ow)+'日'],['往復 / 片道',`${c.rt} / ${c.ow}`],['通常経路',yen(c.commute)],['経路外',yen(c.exSum)]]
+    .map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+  if(c.pass>0&&c.commute>0){
+    const diff=c.commute-c.pass;
+    $('rCompare').innerHTML=diff>0?`<div class="compare pass">通常経路分は定期券（${yen(c.pass)}）の方が <b>${yen(diff)}</b> 安くなります。</div>`
+      :`<div class="compare cash">通常経路分は実費精算の方が定期券より <b>${yen(-diff)}</b> 安くなります。</div>`;
+  }else $('rCompare').innerHTML='';
+  $('rBody').innerHTML=c.rows.length?c.rows.map(r=>`<tr><td class="date">${r.date?r.date.slice(5).replace('-','/'):'—'}</td><td class="dw">${r.dow}</td><td class="kd"><span class="tag ${r.kind}">${KIND[r.kind]}</span></td><td class="route">${esc(r.route)}</td><td class="r">${yen(r.amount)}</td></tr>`).join('')
+    :'<tr><td colspan="5" class="empty">出勤日をカレンダーで選ぶと、ここに明細が並びます。</td></tr>';
+}
+
+/* 出力 */
+function table(){const c=compute(),p=S.profile,[y,m]=S.month.split('-').map(Number);
+  return[['通勤費精算書',`${y}年${m}月`],['氏名',p.name||''],['所属',p.dept||''],['社員番号',p.empNo||''],['通勤経路',`${p.from||''} ⇄ ${p.to||''}`],['交通機関',p.line||''],['片道運賃',c.fare],[],
+    ['日付','曜日','区分','区間・交通機関','金額'],...c.rows.map(r=>[r.date,r.dow,KIND[r.kind],r.route,r.amount]),[],
+    ['出勤日数',c.rt+c.ow],['往復回数',c.rt],['片道回数',c.ow],['通常経路 小計',c.commute],['経路外 小計',c.exSum],['精算合計',c.total]];}
+const toTsv=t=>t.map(r=>r.map(v=>String(v).replace(/[\t\n]/g,' ')).join('\t')).join('\n');
+const toCsv=t=>t.map(r=>r.map(v=>{v=String(v);return/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')).join('\r\n');
+function toText(){const c=compute(),p=S.profile,[y,m]=S.month.split('-').map(Number);
+  let s=`${y}年${m}月分の通勤費を申請いたします。\n\n氏名：${p.name||''}（${p.dept||''}）\n経路：${p.from||''} ⇄ ${p.to||''}${p.line?'（'+p.line+'）':''} 片道${yen(c.fare)}\n出勤日数：${c.rt+c.ow}日（往復${c.rt}回・片道${c.ow}回）\n通常経路：${yen(c.commute)}\n`;
+  const ex=c.rows.filter(r=>r.kind==='ex');
+  if(ex.length)s+=`経路外：${yen(c.exSum)}\n`+ex.map(r=>`  ${r.date} ${r.route} ${yen(r.amount)}`).join('\n')+'\n';
+  return s+`\n精算合計：${yen(c.total)}\n\nよろしくお願いいたします。`;}
+function copy(text,msg,areaId,toastId){
+  const ta=$(areaId),tt=$(toastId);ta.value=text;
+  const ok=()=>{ta.hidden=true;tt.className='toast';tt.textContent=msg};
+  const fb=()=>{ta.hidden=false;ta.focus();ta.select();tt.className='toast err';tt.textContent='自動でコピーできませんでした。下の枠を選択済みなので、Ctrl+C（⌘+C）またはスマホの「コピー」でコピーしてください。'};
+  try{navigator.clipboard.writeText(text).then(ok,fb)}catch(e){fb()}
+}
+$('copyTsv').onclick=()=>copy(toTsv(table()),'コピーしました。Excelのセルに貼り付けると表になります。','copyArea','toast');
+$('copyCsv').onclick=()=>copy(toCsv(table()),'CSV形式でコピーしました。メモ帳などに貼って .csv で保存できます。','copyArea','toast');
+$('copyText').onclick=()=>copy(toText(),'申請メール文をコピーしました。','copyArea','toast');
+let framed=true;try{framed=window.self!==window.top}catch(e){}
+if(!framed)document.documentElement.classList.add('can-print');
+$('printBtn').onclick=()=>{try{window.print()}catch(e){}};
+
+/* バックアップ・復元・全消去 */
+$('backupBtn').onclick=()=>copy(JSON.stringify(S),'バックアップをコピーしました。メモアプリなどに貼って保管してください。','backupArea','dataToast');
+$('restoreOpen').onclick=()=>{$('restoreBox').hidden=false;$('wipeBox').hidden=true;$('restoreText').focus()};
+$('restoreCancel').onclick=()=>{$('restoreBox').hidden=true};
+$('restoreDo').onclick=()=>{const tt=$('dataToast');
+  try{const o=JSON.parse($('restoreText').value.trim());if(!valid(o))throw 0;S=o;S.sample=false;save();renderAll();$('restoreBox').hidden=true;$('restoreText').value='';tt.className='toast';tt.textContent='復元しました。'}
+  catch(e){tt.className='toast err';tt.textContent='読み込めませんでした。「バックアップをコピー」で取った文字列を、そのまま全部貼り付けてください。'}};
+$('wipeOpen').onclick=()=>{$('wipeBox').hidden=false;$('restoreBox').hidden=true};
+$('wipeCancel').onclick=()=>{$('wipeBox').hidden=true};
+$('wipeDo').onclick=()=>{S={sample:false,month:thisMonth(),profile:{},months:{}};save();renderAll();$('wipeBox').hidden=true;$('dataToast').className='toast';$('dataToast').textContent='すべてのデータを消しました。'};
+
+/* 月切替 */
+function setMonth(ym){S.month=ym;$('month').value=ym;save();renderCal();renderExtras();renderReport()}
+$('month').addEventListener('change',e=>{if(e.target.value)setMonth(e.target.value)});
+function shift(n){const[y,m]=S.month.split('-').map(Number);const d=new Date(y,m-1+n,1);setMonth(d.getFullYear()+'-'+pad(d.getMonth()+1))}
+$('prevM').onclick=()=>shift(-1);$('nextM').onclick=()=>shift(1);
+$('clearSample').onclick=()=>{S={sample:false,month:thisMonth(),profile:{},months:{}};save();renderAll();setTab('settings')};
+
+let tab='record';try{tab=sessionStorage.getItem('commute-tab')||'record'}catch(e){}
+const tk0=todayKey();if(S.lastOpen!==tk0){S.month=thisMonth();S.lastOpen=tk0}
+setTab(tab);renderAll();save();
+function holStatus(){const d=webHol?new Date(webHol.at):null;
+  $('holStatus').textContent=d?`祝日：Webのデータを使用中（${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} 取得）。範囲外の年は自動計算します。`:'祝日：法律のルールから自動計算しています。Webから取得できた場合は最新データに切り替わります。'}
+holStatus();
+fetchHolidays(false).then(r=>{if(r==='ok'){renderCal();holStatus()}});
+$('holRefresh').onclick=()=>{const t=$('dataToast');t.className='toast';t.textContent='祝日データを取得しています…';
+  fetchHolidays(true).then(r=>{if(r==='ok'){renderCal();holStatus();t.textContent='祝日データを更新しました。'}else{t.className='toast err';t.textContent='Webから取得できませんでした。自動計算の祝日で表示しています（通常はこれで正しく表示されます）。'}})};
+/* localStorage が消えていても IndexedDB に残っていれば復旧 */
+IDB.open().then(db=>{if(!db)return;IDB.get().then(v=>{if(v&&!hadLS&&S.sample){S=v;save();renderAll()}else IDB.put(S)})});
+})();
+</script>
+
+</body>
+</html>
